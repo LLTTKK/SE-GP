@@ -167,6 +167,9 @@ class FoodOrderingSystem:
         # Add sign out button
         ttk.Button(orders_frame, text="Sign Out", command=self.sign_out).pack(anchor="ne")
         
+        # Add talk to customer service button
+        ttk.Button(orders_frame, text="Talk to Customer Service", command=self.open_customer_service_chat).pack(anchor="ne")
+        
         try:
             with open('orders.txt', 'r') as f:
                 all_orders = json.load(f)
@@ -199,6 +202,7 @@ class FoodOrderingSystem:
                 order_info = f"Order #{order['id']} - {order['date']}\n"
                 order_info += f"Restaurant: {restaurant['name']} ({restaurant_address})\n"
                 order_info += f"Customer: {customer['username']}\n"
+                order_info += f"Customer Address: {order['delivery_address']}\n"  # Add customer address
                 order_info += f"Total: ${order['total']:.2f}"
                 
                 ttk.Label(order_frame, text=order_info).pack(side=tk.LEFT, padx=5)
@@ -234,6 +238,7 @@ class FoodOrderingSystem:
                 order_info = f"Order #{order['id']} - {order['date']}\n"
                 order_info += f"Restaurant: {restaurant['name']}\n"
                 order_info += f"Customer: {customer['username']}\n"
+                order_info += f"Customer Address: {order['delivery_address']}\n"  # Add customer address
                 order_info += f"Total: ${order['total']:.2f}"
                 
                 ttk.Label(order_frame, text=order_info).pack(side=tk.LEFT, padx=5)
@@ -293,6 +298,7 @@ class FoodOrderingSystem:
         ttk.Label(details_frame, text="\nCustomer Details:", font=('Helvetica', 12, 'bold')).pack(anchor="w")
         ttk.Label(details_frame, text=f"Name: {customer['username']}").pack(anchor="w")
         ttk.Label(details_frame, text=f"Email: {customer['email']}").pack(anchor="w")
+        ttk.Label(details_frame, text=f"Address: {order['delivery_address']}").pack(anchor="w")  # Add customer address
 
     def accept_delivery(self, order_id):
         try:
@@ -448,9 +454,12 @@ class FoodOrderingSystem:
         
         if self.current_user_role == 'Customer':
             ttk.Button(button_frame, text="View Cart", command=self.show_cart).pack(side=tk.LEFT, padx=5)
+            ttk.Button(button_frame, text="Talk to Customer Service", command=self.open_customer_service_chat).pack(side=tk.LEFT, padx=5)
         elif self.current_user_role in ['Restaurant Staff', 'Restaurant Owner']:
             ttk.Button(button_frame, text="Add Food", 
                       command=lambda: self.show_add_food_page(restaurant_id)).pack(side=tk.LEFT, padx=5)
+            ttk.Button(button_frame, text="Talk to Customer Service", 
+                      command=self.open_customer_service_chat).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Sign Out", command=self.sign_out).pack(side=tk.LEFT)
         
         # Create canvas with scrollbar
@@ -867,16 +876,38 @@ class FoodOrderingSystem:
             self.current_user_role = user['role']
             self.current_user_restaurant_id = user.get('restaurant_id')
             
-            if self.current_user_role == 'Customer':
-                self.show_restaurant_list()
-            elif self.current_user_role in ['Restaurant Staff', 'Restaurant Owner']:
-                self.show_edit_menu_page()
-            elif self.current_user_role == 'Delivery Staff':
-                self.show_delivery_orders()
-            elif self.current_user_role == 'Customer Service':
-                self.show_customer_service_page()
+            self.show_verification_page()
         else:
             messagebox.showerror("Error", "Invalid username or password")
+
+    def show_verification_page(self):
+        self.clear_window()
+        
+        verification_frame = ttk.Frame(self.root)
+        verification_frame.pack(pady=50)
+        
+        ttk.Label(verification_frame, text="Verification Code Sent to Your Email", font=('Helvetica', 16, 'bold')).pack(pady=20)
+        
+        ttk.Label(verification_frame, text="Enter Verification Code:").pack(pady=5)
+        verification_code_entry = ttk.Entry(verification_frame)
+        verification_code_entry.pack(pady=5)
+        
+        def verify_code():
+            # For demo purposes, we assume the code is always correct
+            messagebox.showinfo("Success", "Verification successful!")
+            self.show_user_page()
+        
+        ttk.Button(verification_frame, text="Verify", command=verify_code).pack(pady=20)
+        
+    def show_user_page(self):
+        if self.current_user_role == 'Customer':
+            self.show_restaurant_list()
+        elif self.current_user_role in ['Restaurant Staff', 'Restaurant Owner']:
+            self.show_edit_menu_page()
+        elif self.current_user_role == 'Delivery Staff':
+            self.show_delivery_orders()
+        elif self.current_user_role == 'Customer Service':
+            self.show_customer_service_page()
 
     def signup(self, username, password, email, role, restaurant_name=None, restaurant_description=None):
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -1124,6 +1155,32 @@ class FoodOrderingSystem:
                 self.show_customer_service_page()
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to delete user account: {e}")
+
+    def open_customer_service_chat(self):
+        chat_window = tk.Toplevel(self.root)
+        chat_window.title("Chat with Customer Service")
+        chat_window.geometry("400x400")
+        
+        chat_frame = ttk.Frame(chat_window, padding=10)
+        chat_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(chat_frame, text="Chat with Customer Service", font=('Helvetica', 14, 'bold')).pack(pady=10)
+        
+        chat_text = tk.Text(chat_frame, state='disabled', wrap='word')
+        chat_text.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        message_entry = ttk.Entry(chat_frame)
+        message_entry.pack(fill=tk.X, pady=5)
+        
+        def send_message():
+            message = message_entry.get()
+            if message:
+                chat_text.config(state='normal')
+                chat_text.insert(tk.END, f"To Customer Service: {message}\n")
+                chat_text.config(state='disabled')
+                message_entry.delete(0, tk.END)
+        
+        ttk.Button(chat_frame, text="Send", command=send_message).pack(pady=5)
 
     def run(self):
         self.root.mainloop()
