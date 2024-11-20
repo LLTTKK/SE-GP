@@ -132,13 +132,24 @@ class FoodOrderingSystem:
 
         role_var.trace('w', on_role_change)
         
+        def validate_and_signup():
+            email = email_entry.get()
+            role = role_var.get()
+            
+            # Check if customer email is valid HKMU email
+            if role == 'Customer' and not email.endswith('@live.hkmu.edu.hk'):
+                messagebox.showerror("Error", "You are not HKMU student, only HKMU student are allow to use the app")
+                return
+                
+            self.signup(username_entry.get(),
+                       password_entry.get(),
+                       email,
+                       role,
+                       restaurant_name_entry.get(),
+                       restaurant_desc_entry.get())
+        
         ttk.Button(signup_frame, text="Sign Up",
-                  command=lambda: self.signup(username_entry.get(), 
-                                            password_entry.get(),
-                                            email_entry.get(),
-                                            role_var.get(),
-                                            restaurant_name_entry.get(),
-                                            restaurant_desc_entry.get())
+                  command=validate_and_signup
                   ).grid(row=5, column=0, columnspan=2, pady=10)
         
         ttk.Button(signup_frame, text="Back to Login",
@@ -367,12 +378,63 @@ class FoodOrderingSystem:
                           command=lambda r_id=restaurant['id']: self.show_menu(r_id)
                           ).pack(side=tk.RIGHT)
             elif self.current_user_role in ['Restaurant Staff', 'Restaurant Owner'] and restaurant['id'] == self.current_user_restaurant_id:
-                ttk.Button(restaurant_frame, text="Edit Menu",
-                          command=lambda r_id=restaurant['id']: self.show_edit_menu_page()
+                ttk.Button(restaurant_frame, text="View Menu",
+                          command=lambda r_id=restaurant['id']: self.show_menu(r_id)
                           ).pack(side=tk.RIGHT)
+                ttk.Button(restaurant_frame, text="Add Food",
+                          command=lambda r_id=restaurant['id']: self.show_add_food_page(r_id)
+                          ).pack(side=tk.RIGHT, padx=5)
         
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    def show_add_food_page(self, restaurant_id):
+        add_food_window = tk.Toplevel(self.root)
+        add_food_window.title("Add New Food Item")
+        add_food_window.geometry("400x300")
+        
+        add_food_frame = ttk.Frame(add_food_window, padding=20)
+        add_food_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(add_food_frame, text="Add New Food Item", font=('Helvetica', 14, 'bold')).pack(pady=10)
+        
+        ttk.Label(add_food_frame, text="Food Name:").pack(pady=5)
+        name_entry = ttk.Entry(add_food_frame)
+        name_entry.pack(pady=5)
+        
+        ttk.Label(add_food_frame, text="Price:").pack(pady=5)
+        price_entry = ttk.Entry(add_food_frame)
+        price_entry.pack(pady=5)
+        
+        ttk.Label(add_food_frame, text="Description:").pack(pady=5)
+        desc_entry = ttk.Entry(add_food_frame)
+        desc_entry.pack(pady=5)
+        
+        def add_food():
+            try:
+                with open('menu_items.txt', 'r') as f:
+                    menu_items = json.load(f)
+                
+                new_item = {
+                    'id': len(menu_items) + 1,
+                    'restaurant_id': restaurant_id,
+                    'name': name_entry.get(),
+                    'price': float(price_entry.get()),
+                    'description': desc_entry.get()
+                }
+                
+                menu_items.append(new_item)
+                
+                with open('menu_items.txt', 'w') as f:
+                    json.dump(menu_items, f)
+                    
+                messagebox.showinfo("Success", "Food item added successfully!")
+                add_food_window.destroy()
+                self.show_menu(restaurant_id)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to add food item: {e}")
+        
+        ttk.Button(add_food_frame, text="Add Food", command=add_food).pack(pady=20)
 
     def show_menu(self, restaurant_id):
         self.clear_window()
@@ -386,6 +448,9 @@ class FoodOrderingSystem:
         
         if self.current_user_role == 'Customer':
             ttk.Button(button_frame, text="View Cart", command=self.show_cart).pack(side=tk.LEFT, padx=5)
+        elif self.current_user_role in ['Restaurant Staff', 'Restaurant Owner']:
+            ttk.Button(button_frame, text="Add Food", 
+                      command=lambda: self.show_add_food_page(restaurant_id)).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Sign Out", command=self.sign_out).pack(side=tk.LEFT)
         
         # Create canvas with scrollbar
@@ -405,6 +470,13 @@ class FoodOrderingSystem:
         with open('menu_items.txt', 'r') as f:
             all_menu_items = json.load(f)
             menu_items = [item for item in all_menu_items if item['restaurant_id'] == restaurant_id]
+        
+        # Add Food button at the top for restaurant staff/owners
+        if self.current_user_role in ['Restaurant Staff', 'Restaurant Owner'] and restaurant_id == self.current_user_restaurant_id:
+            add_food_frame = ttk.Frame(scrollable_frame)
+            add_food_frame.pack(fill=tk.X, padx=10, pady=5)
+            ttk.Button(add_food_frame, text="Add New Food Item",
+                      command=lambda: self.show_add_food_page(restaurant_id)).pack()
         
         for item in menu_items:
             item_frame = ttk.Frame(scrollable_frame)
@@ -497,6 +569,57 @@ class FoodOrderingSystem:
                 
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to delete menu item: {e}")
+
+    def add_to_cart(self, item):
+        if self.current_user_role == 'Customer':
+            self.cart.append(item)
+            messagebox.showinfo("Success", f"{item['name']} added to cart!")
+        else:
+            messagebox.showerror("Error", "Only customers can add items to cart")
+
+    def show_cart(self):
+        self.clear_window()
+        
+        cart_frame = ttk.Frame(self.root)
+        cart_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        ttk.Label(cart_frame, text="Shopping Cart", font=('Helvetica', 16, 'bold')).pack()
+        
+        total = 0
+        if self.cart:
+            for item in self.cart:
+                item_frame = ttk.Frame(cart_frame)
+                item_frame.pack(fill=tk.X, pady=5)
+                
+                ttk.Label(item_frame, text=item['name']).pack(side=tk.LEFT)
+                ttk.Label(item_frame, text=f"${item['price']}").pack(side=tk.RIGHT)
+                total += item['price']
+            
+            ttk.Label(cart_frame, text=f"Total: ${total:.2f}", font=('Helvetica', 12, 'bold')).pack(pady=10)
+            ttk.Button(cart_frame, text="Proceed to Checkout", 
+                      command=lambda: self.show_payment_page(total)).pack(pady=5)
+        else:
+            ttk.Label(cart_frame, text="Your cart is empty").pack(pady=20)
+        
+        ttk.Button(cart_frame, text="Back to Restaurants",
+                  command=self.show_restaurant_list).pack(pady=5)
+
+    def show_payment_page(self, total):
+                with open('menu_items.txt', 'r') as f:
+                    menu_items = json.load(f)
+                
+                # Remove the item
+                menu_items = [i for i in menu_items if i['id'] != item['id']]
+                
+                # Save updated menu items
+                with open('menu_items.txt', 'w') as f:
+                    json.dump(menu_items, f)
+                
+                messagebox.showinfo("Success", "Menu item deleted successfully!")
+                self.show_menu(self.current_user_restaurant_id);
+                
+            #except Exception as e:
+                #messagebox.showerror("Error", f"Failed to delete menu item: {e}")
 
     def add_to_cart(self, item):
         if self.current_user_role == 'Customer':
@@ -750,6 +873,8 @@ class FoodOrderingSystem:
                 self.show_edit_menu_page()
             elif self.current_user_role == 'Delivery Staff':
                 self.show_delivery_orders()
+            elif self.current_user_role == 'Customer Service':
+                self.show_customer_service_page()
         else:
             messagebox.showerror("Error", "Invalid username or password")
 
@@ -815,6 +940,190 @@ class FoodOrderingSystem:
     def clear_window(self):
         for widget in self.root.winfo_children():
             widget.destroy()
+
+    def show_customer_service_page(self):
+        self.clear_window()
+        
+        service_frame = ttk.Frame(self.root)
+        service_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        ttk.Label(service_frame, text="Customer Service", font=('Helvetica', 16, 'bold')).pack()
+        
+        # Add sign out button
+        ttk.Button(service_frame, text="Sign Out", command=self.sign_out).pack(anchor="ne")
+        
+        # Add tabs for orders, accounts, and chat
+        tab_control = ttk.Notebook(service_frame)
+        orders_tab = ttk.Frame(tab_control)
+        accounts_tab = ttk.Frame(tab_control)
+        chat_tab = ttk.Frame(tab_control)
+        tab_control.add(orders_tab, text="Orders")
+        tab_control.add(accounts_tab, text="Accounts")
+        tab_control.add(chat_tab, text="Chat")
+        tab_control.pack(expand=1, fill="both")
+        
+        # Orders tab
+        ttk.Label(orders_tab, text="All Orders", font=('Helvetica', 14, 'bold')).pack(pady=10)
+        
+        try:
+            with open('orders.txt', 'r') as f:
+                all_orders = json.load(f)
+        except:
+            all_orders = []
+        
+        for order in all_orders:
+            order_frame = ttk.Frame(orders_tab, relief="solid", borderwidth=1)
+            order_frame.pack(fill=tk.X, pady=5, padx=5)
+            
+            order_info = f"Order #{order['id']} - {order['date']}\n"
+            order_info += f"Status: {order['status']}\n"
+            order_info += f"Total: ${order['total']:.2f}"
+            
+            ttk.Label(order_frame, text=order_info).pack(side=tk.LEFT, padx=5)
+            ttk.Button(order_frame, text="View Details",
+                      command=lambda o=order: self.show_order_details(o)).pack(side=tk.RIGHT, padx=5)
+        
+        # Accounts tab
+        ttk.Label(accounts_tab, text="All Accounts", font=('Helvetica', 14, 'bold')).pack(pady=10)
+        
+        # Create canvas with scrollbar
+        canvas = tk.Canvas(accounts_tab)
+        scrollbar = ttk.Scrollbar(accounts_tab, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        try:
+            with open('users.txt', 'r') as f:
+                all_users = json.load(f)
+        except:
+            all_users = []
+        
+        for user in all_users:
+            if user['role'] == 'Customer Service':
+                continue  # Skip customer service accounts
+            
+            user_frame = ttk.Frame(scrollable_frame, relief="solid", borderwidth=1)
+            user_frame.pack(fill=tk.X, pady=5, padx=5)
+            
+            user_info = f"Username: {user['username']}\n"
+            user_info += f"Email: {user['email']}\n"
+            user_info += f"Role: {user['role']}"
+            
+            ttk.Label(user_frame, text=user_info).pack(side=tk.LEFT, padx=5)
+            
+            button_frame = ttk.Frame(user_frame)
+            button_frame.pack(side=tk.RIGHT, padx=5)
+            
+            ttk.Button(button_frame, text="Edit",
+                      command=lambda u=user: self.edit_user_account(u)).pack(side=tk.LEFT, padx=2)
+            ttk.Button(button_frame, text="Delete",
+                      command=lambda u=user: self.delete_user_account(u)).pack(side=tk.LEFT, padx=2)
+        
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Chat tab
+        ttk.Label(chat_tab, text="Chat with Users", font=('Helvetica', 14, 'bold')).pack(pady=10)
+        
+        chat_frame = ttk.Frame(chat_tab)
+        chat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        ttk.Label(chat_frame, text="Select User:").pack(anchor="w")
+        user_var = tk.StringVar()
+        user_dropdown = ttk.Combobox(chat_frame, textvariable=user_var)
+        user_dropdown.pack(fill=tk.X, pady=5)
+        
+        try:
+            with open('users.txt', 'r') as f:
+                all_users = json.load(f)
+            user_dropdown['values'] = [user['username'] for user in all_users if user['role'] != 'Customer Service']
+        except:
+            user_dropdown['values'] = []
+        
+        chat_text = tk.Text(chat_frame, state='disabled', wrap='word')
+        chat_text.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        message_entry = ttk.Entry(chat_frame)
+        message_entry.pack(fill=tk.X, pady=5)
+        
+        def send_message():
+            user = user_var.get()
+            message = message_entry.get()
+            if user and message:
+                chat_text.config(state='normal')
+                chat_text.insert(tk.END, f"To {user}: {message}\n")
+                chat_text.config(state='disabled')
+                message_entry.delete(0, tk.END)
+        
+        ttk.Button(chat_frame, text="Send", command=send_message).pack(pady=5)
+    
+    def edit_user_account(self, user):
+        edit_window = tk.Toplevel(self.root)
+        edit_window.title("Edit User Account")
+        edit_window.geometry("400x300")
+        
+        ttk.Label(edit_window, text="Username:").pack(pady=5)
+        username_entry = ttk.Entry(edit_window)
+        username_entry.insert(0, user['username'])
+        username_entry.pack(pady=5)
+        
+        ttk.Label(edit_window, text="Email:").pack(pady=5)
+        email_entry = ttk.Entry(edit_window)
+        email_entry.insert(0, user['email'])
+        email_entry.pack(pady=5)
+        
+        ttk.Label(edit_window, text="Role:").pack(pady=5)
+        role_var = tk.StringVar()
+        roles = ['Customer', 'Restaurant Staff', 'Restaurant Owner', 'Delivery Staff']
+        role_dropdown = ttk.Combobox(edit_window, textvariable=role_var, values=roles)
+        role_dropdown.set(user['role'])
+        role_dropdown.pack(pady=5)
+        
+        def save_changes():
+            try:
+                with open('users.txt', 'r') as f:
+                    users = json.load(f)
+                
+                for u in users:
+                    if u['id'] == user['id']:
+                        u['username'] = username_entry.get()
+                        u['email'] = email_entry.get()
+                        u['role'] = role_var.get()
+                        break
+                
+                with open('users.txt', 'w') as f:
+                    json.dump(users, f)
+                
+                messagebox.showinfo("Success", "User account updated successfully!")
+                edit_window.destroy()
+                self.show_customer_service_page()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to update user account: {e}")
+        
+        ttk.Button(edit_window, text="Save Changes", command=save_changes).pack(pady=20)
+    
+    def delete_user_account(self, user):
+        if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this user account?"):
+            try:
+                with open('users.txt', 'r') as f:
+                    users = json.load(f)
+                
+                users = [u for u in users if u['id'] != user['id']]
+                
+                with open('users.txt', 'w') as f:
+                    json.dump(users, f)
+                
+                messagebox.showinfo("Success", "User account deleted successfully!")
+                self.show_customer_service_page()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete user account: {e}")
 
     def run(self):
         self.root.mainloop()
