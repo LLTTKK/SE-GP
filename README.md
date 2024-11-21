@@ -1,6 +1,6 @@
 # HKMU Food Ordering System
 
-A Python-based desktop application for food ordering and delivery management, specifically designed for HKMU students and restaurants.
+A Python-based desktop application for food ordering and delivery management, specifically designed for HKMU students and restaurants.(You Need to SignUp all the account then use)
 
 ## Features
 
