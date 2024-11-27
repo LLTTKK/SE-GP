@@ -614,57 +614,6 @@ class FoodOrderingSystem:
                   command=self.show_restaurant_list).pack(pady=5)
 
     def show_payment_page(self, total):
-                with open('menu_items.txt', 'r') as f:
-                    menu_items = json.load(f)
-                
-                # Remove the item
-                menu_items = [i for i in menu_items if i['id'] != item['id']]
-                
-                # Save updated menu items
-                with open('menu_items.txt', 'w') as f:
-                    json.dump(menu_items, f)
-                
-                messagebox.showinfo("Success", "Menu item deleted successfully!")
-                self.show_menu(self.current_user_restaurant_id);
-                
-            #except Exception as e:
-                #messagebox.showerror("Error", f"Failed to delete menu item: {e}")
-
-    def add_to_cart(self, item):
-        if self.current_user_role == 'Customer':
-            self.cart.append(item)
-            messagebox.showinfo("Success", f"{item['name']} added to cart!")
-        else:
-            messagebox.showerror("Error", "Only customers can add items to cart")
-
-    def show_cart(self):
-        self.clear_window()
-        
-        cart_frame = ttk.Frame(self.root)
-        cart_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        ttk.Label(cart_frame, text="Shopping Cart", font=('Helvetica', 16, 'bold')).pack()
-        
-        total = 0
-        if self.cart:
-            for item in self.cart:
-                item_frame = ttk.Frame(cart_frame)
-                item_frame.pack(fill=tk.X, pady=5)
-                
-                ttk.Label(item_frame, text=item['name']).pack(side=tk.LEFT)
-                ttk.Label(item_frame, text=f"${item['price']}").pack(side=tk.RIGHT)
-                total += item['price']
-            
-            ttk.Label(cart_frame, text=f"Total: ${total:.2f}", font=('Helvetica', 12, 'bold')).pack(pady=10)
-            ttk.Button(cart_frame, text="Proceed to Checkout", 
-                      command=lambda: self.show_payment_page(total)).pack(pady=5)
-        else:
-            ttk.Label(cart_frame, text="Your cart is empty").pack(pady=20)
-        
-        ttk.Button(cart_frame, text="Back to Restaurants",
-                  command=self.show_restaurant_list).pack(pady=5)
-
-    def show_payment_page(self, total):
         self.clear_window()
         
         payment_frame = ttk.Frame(self.root)
@@ -679,6 +628,112 @@ class FoodOrderingSystem:
         # Add delivery address field
         ttk.Label(payment_frame, text="Delivery Address:").pack(pady=5)
         delivery_address_entry = ttk.Entry(payment_frame)
+        delivery_address_entry.pack(pady=5)
+
+        payment_var = tk.StringVar()
+        payment_methods = ['Credit Card', 'PayPal', 'Apple Pay', 'Google Pay']
+        
+        for method in payment_methods:
+            ttk.Radiobutton(payment_frame, text=method, 
+                          variable=payment_var, value=method).pack(pady=5)
+        
+        def process_payment():
+            if not payment_var.get():
+                messagebox.showerror("Error", "Please select a payment method")
+                return
+            
+            # Create new order
+            try:
+                with open('orders.txt', 'r') as f:
+                    orders = json.load(f)
+            except:
+                orders = []
+                
+            new_order = {
+                'id': len(orders) + 1,
+                'user_id': self.current_user_id,
+                'items': self.cart,
+                'total': total,
+                'payment_method': payment_var.get(),
+                'status': 'delivering',
+                'date': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'delivery_address': delivery_address_entry.get()  # Attach delivery address
+            }
+            
+            orders.append(new_order)
+            
+            with open('orders.txt', 'w') as f:
+                json.dump(orders, f)
+                
+            messagebox.showinfo("Success", 
+                              f"Payment processed successfully using {payment_var.get()}")
+            self.cart = []  # Clear cart after successful payment
+            self.show_restaurant_list()
+        
+        ttk.Button(payment_frame, text="Pay Now",
+                  command=process_payment).pack(pady=20)
+        
+        ttk.Button(payment_frame, text="Back to Cart",
+                  command=self.show_cart).pack()
+
+        # Add discount button
+        ttk.Button(payment_frame, text="Apply Discount",
+                  command=lambda: self.apply_discount(total, delivery_address_entry.get())).pack(pady=10)
+
+    def apply_discount(self, total, delivery_address):
+        discount_window = tk.Toplevel(self.root)
+        discount_window.title("Apply Discount")
+        discount_window.geometry("300x200")
+        
+        discount_frame = ttk.Frame(discount_window, padding=20)
+        discount_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(discount_frame, text="Enter Discount Code:").pack(pady=5)
+        discount_code_entry = ttk.Entry(discount_frame)
+        discount_code_entry.pack(pady=5)
+        
+        def apply_code():
+            discount_code = discount_code_entry.get()
+            discount_amount = 0
+            
+            try:
+                with open('discounts.txt', 'r') as f:
+                    discounts = json.load(f)
+                discount = next((d for d in discounts if d['code'] == discount_code), None)
+                if discount:
+                    discount_amount = discount['amount']
+                else:
+                    messagebox.showerror("Error", "Invalid discount code")
+                    return
+            except:
+                messagebox.showerror("Error", "Failed to apply discount")
+                return
+            
+            new_total = total - discount_amount
+            if new_total < 0:
+                new_total = 0
+            
+            discount_window.destroy()
+            self.show_payment_page_with_discount(new_total, delivery_address)
+        
+        ttk.Button(discount_frame, text="Apply", command=apply_code).pack(pady=10)
+        
+    def show_payment_page_with_discount(self, total, delivery_address):
+        self.clear_window()
+        
+        payment_frame = ttk.Frame(self.root)
+        payment_frame.pack(pady=50)
+        
+        ttk.Label(payment_frame, text="Select Payment Method", 
+                 font=('Helvetica', 16, 'bold')).pack(pady=20)
+        
+        ttk.Label(payment_frame, text=f"Total Amount after Discount: ${total:.2f}",
+                 font=('Helvetica', 12)).pack(pady=10)
+        
+        # Add delivery address field
+        ttk.Label(payment_frame, text="Delivery Address:").pack(pady=5)
+        delivery_address_entry = ttk.Entry(payment_frame)
+        delivery_address_entry.insert(0, delivery_address)
         delivery_address_entry.pack(pady=5)
 
         payment_var = tk.StringVar()
@@ -988,9 +1043,11 @@ class FoodOrderingSystem:
         orders_tab = ttk.Frame(tab_control)
         accounts_tab = ttk.Frame(tab_control)
         chat_tab = ttk.Frame(tab_control)
+        discounts_tab = ttk.Frame(tab_control)  # Add discounts tab
         tab_control.add(orders_tab, text="Orders")
         tab_control.add(accounts_tab, text="Accounts")
         tab_control.add(chat_tab, text="Chat")
+        tab_control.add(discounts_tab, text="Discounts")  # Add discounts tab
         tab_control.pack(expand=1, fill="both")
         
         # Orders tab
@@ -1094,6 +1151,43 @@ class FoodOrderingSystem:
                 message_entry.delete(0, tk.END)
         
         ttk.Button(chat_frame, text="Send", command=send_message).pack(pady=5)
+        
+        # Discounts tab
+        ttk.Label(discounts_tab, text="Manage Discounts", font=('Helvetica', 14, 'bold')).pack(pady=10)
+        
+        discount_frame = ttk.Frame(discounts_tab)
+        discount_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        ttk.Label(discount_frame, text="Discount Code:").grid(row=0, column=0, pady=5)
+        discount_code_entry = ttk.Entry(discount_frame)
+        discount_code_entry.grid(row=0, column=1, pady=5)
+        
+        ttk.Label(discount_frame, text="Discount Amount:").grid(row=1, column=0, pady=5)
+        discount_amount_entry = ttk.Entry(discount_frame)
+        discount_amount_entry.grid(row=1, column=1, pady=5)
+        
+        def add_discount():
+            try:
+                with open('discounts.txt', 'r') as f:
+                    discounts = json.load(f)
+            except:
+                discounts = []
+                
+            new_discount = {
+                'code': discount_code_entry.get(),
+                'amount': float(discount_amount_entry.get())
+            }
+            
+            discounts.append(new_discount)
+            
+            with open('discounts.txt', 'w') as f:
+                json.dump(discounts, f)
+                
+            messagebox.showinfo("Success", "Discount added successfully!")
+            discount_code_entry.delete(0, tk.END)
+            discount_amount_entry.delete(0, tk.END)
+        
+        ttk.Button(discount_frame, text="Add Discount", command=add_discount).grid(row=2, column=0, columnspan=2, pady=10)
     
     def edit_user_account(self, user):
         edit_window = tk.Toplevel(self.root)
@@ -1188,3 +1282,4 @@ class FoodOrderingSystem:
 if __name__ == "__main__":
     app = FoodOrderingSystem()
     app.run()
+    
